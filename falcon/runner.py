@@ -3,47 +3,81 @@ import sys
 import time
 import traceback
 
-from event.handler import BaseHandler, QueueBase
+from .handler import BaseHandler
 
 logger = logging.getLogger(__name__)
 
 
-class Runner(QueueBase):
-    handlers = []
-    running = True
-    initialized = False
+class BaseRunner(object):
+    loop_sleep = 1
+    empty_sleep = 2
 
-    def run(self):
+    def __init__(self, queue_name, accounts, *args, **kwargs):
+        self.handlers = []
+        self.running = False
+        self.halt = False
+        self.accounts = accounts if type(accounts) is list else [accounts]
+        self.queue_name = queue_name
+        self.queue = self.create_queue(queue_name)
+
+    def stop(self):
+        del self.queue
+        self.running = False
+        sys.exit(0)
+
+    def create_queue(self, queue_name):
         raise NotImplementedError
 
     def register(self, *args):
+        """register handlers"""
         for handler in args:
             if isinstance(handler, BaseHandler):
-                handler.set_queue(self.queue)
                 self.handlers.append(handler)
 
-    def handle_event(self, event):
+    def launch(self):
+        """before actcul run event bus"""
+        logger.info('%s statup.' % self.__class__.__name__)
+        logger.info('Registered handler: %s' % ', '.join([x.__class__.__name__ for x in self.handlers]))
+        self.running = True
+        self.halt = False
+
+    def loop_start(self):
+        pass
+
+    def loop_end(self):
+        pass
+
+    def yield_event(self, block=False):
+        raise NotImplementedError
+
+    def put_event(self, event):
+        raise NotImplementedError
+
+    def handle_error(self, ex):
+        pass
+
+    def loop_handlers(self, event):
         """loop handlers to process event"""
         re_put = False
         for handler in self.handlers:
             if '*' in handler.subscription:
-                result = self.process_event(handler, event)
+                result = self.handle_event(handler, event)
                 re_put = result or re_put
                 continue
             elif event.type in handler.subscription:
-                result = self.process_event(handler, event)
+                result = self.handle_event(handler, event)
                 re_put = result or re_put
         if re_put:
             if event.tried > 10:
                 logger.error('[EVENT_RETRY] tried to many times abort, event=%s' % event)
             else:
                 event.tried += 1
-                self.put(event)
+                self.put_event(event)
 
-    def process_event(self, handler, event):
+    def handle_event(self, handler, event):
         """process event by single handler"""
         try:
-            return handler.process(event)
+            return handler.process(event, self)
         except Exception as ex:
             logger.error('[EVENT_PROCESS] %s, event=%s' % (ex, event.__dict__))
             # print trace stack
@@ -52,73 +86,18 @@ class Runner(QueueBase):
                 logger.error(item.strip())
             self.handle_error(ex)
 
-    def handle_error(self, ex):
-        pass
-
-    def print(self):
-        print(self.handlers)
-
-    def stop(self):
-        del self.queue
-        self.running = False
-        sys.exit(0)
-
-
-class HeartbeatRunner(Runner):
-    def __init__(self, queue, heartbeat=5, *args, **kwargs):
-        super(HeartbeatRunner, self).__init__(queue)
-        self.heartbeat = heartbeat or 5  # seconds
-        self.register(*args)
-
     def run(self):
-        logger.info('%s statup.' % self.__class__.__name__)
-        logger.info('Registered handler: %s' % ', '.join([x.__class__.__name__ for x in self.handlers]))
-        logger.info('\n')
+        self.launch()
 
-        while True:
-            try:
-                event = self.get(False)
-            except queue.Empty:
-                time.sleep(self.heartbeat)
-                self.put(HeartBeatEvent())
-            else:
-                if event:
-                    if settings.DEBUG:
-                        logger.info("New %sEvent: %s", (event.type, event.__dict__))
-                    else:
-                        logger.debug("New %sEvent: %s", (event.type, event.__dict__))
+        while self.running:
+            self.loop_start()
 
-                    self.handle_event(event)
+            while self.halt:
+                event = self.yield_event()
+                if not event:
+                    time.sleep(self.empty_sleep)
+                    break
+                self.loop_handlers(event)
 
-
-class StreamRunnerBase(Runner):
-    broker = ''
-    account = None
-
-    def __init__(self, queue, pairs, *args, **kwargs):
-        super(StreamRunnerBase, self).__init__(queue)
-        if args:
-            self.register(*args)
-        self.pairs = pairs
-        self.prices = self._set_up_prices_dict()
-
-    def _set_up_prices_dict(self):
-        prices_dict = dict(
-            (k, v) for k, v in [
-                (p, {"bid": None, "ask": None, "time": None, "spread": None}) for p in self.pairs
-            ]
-        )
-
-        return prices_dict
-
-
-if __name__ == '__main__':
-    # python -m event.runner
-    from event.handler import *
-    import queue
-
-    q = queue.Queue(maxsize=2000)
-    d = DebugHandler(q)
-    t = TimeFrameTicker(q)
-    r = HeartbeatRunner(q, 5, d, t)
-    r.run()
+            self.loop_end()
+            time.sleep(self.loop_sleep)
