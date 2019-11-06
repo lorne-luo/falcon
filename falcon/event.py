@@ -1,20 +1,8 @@
-from datetime import datetime
 from decimal import Decimal
 
-from dateparser import parse
-
-from falcon.constants import OrderType, get_mt4_symbol
-
-
-class SignalAction(object):
-    OPEN = 'OPEN'
-    CLOSE = 'CLOSE'
-    UPDATE = 'UPDATE'
-
-
-class MarketAction(object):
-    OPEN = 'OPEN'
-    CLOSE = 'CLOSE'
+from falcon.base.event import BaseEvent
+from falcon.base.order import OrderType
+from falcon.base.symbol import get_mt4_symbol
 
 
 class EventType(object):
@@ -22,8 +10,8 @@ class EventType(object):
     STARTUP = 'STARTUP'  # system start up
     SHUTDOWN = 'SHUTDOWN'  # system shutdown
     HEARTBEAT = 'HEARTBEAT'
-    TICK_PRICE = 'TICK_PRICE' # tick price
-    TIMEFRAME = 'TIMEFRAME' # time frame changes
+    TICK_PRICE = 'TICK_PRICE'  # tick price
+    TIMEFRAME = 'TIMEFRAME'  # time frame changes
     SIGNAL = 'SIGNAL'
     ORDER_CLOSE = 'ORDER_CLOSE'
     ORDER_HOLDING = 'ORDER_HOLDING'
@@ -33,58 +21,15 @@ class EventType(object):
     MARKET = 'MARKET'
 
 
-class Event(object):
-    """base event model"""
-    type = None
-
-    def __init__(self):
-        self.time = datetime.utcnow()
-        self.tried = 0  # some event may push back to queue for re-process
-
-    def to_dict(self):
-        data = self.__dict__.copy()
-        for k in data.keys():
-            if type(data[k]) in (str, float, int) or data[k] is None:
-                pass
-            elif type(data[k]) is Decimal:
-                data[k] = float(data[k])
-            elif isinstance(data[k], datetime):
-                data[k] = 'datetime:%s' % data[k].strftime('%Y-%m-%d %H:%M:%S:%f')
-            else:
-                raise Exception('%s.%s is not serializable.' % (self.__class__.__name__, k))
-        data['type'] = self.type
-        return data
-
-    @staticmethod
-    def from_dict(data):
-        instance = Event()
-        for k in data.keys():
-            if type(data[k]) is int or data[k] is None:
-                pass
-            elif type(data[k]) is float:
-                data[k] = Decimal(str(data[k]))
-
-            elif type(data[k]) is str:
-                if data[k].startswith('datetime:'):
-                    dt_str = data[k].replace('datetime:', '')
-                    dt = parse(dt_str, date_formats=['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d %H:%M:%S:%f',
-                                                     '%Y-%m-%dT%H:%M:%S'])
-                    data[k] = dt or data[k]
-            else:
-                raise Exception('Event.from_dict %s=%s is not deserializable.' % (k, data[k]))
-            setattr(instance, k, data[k])
-        return instance
-
-
-class StartUpEvent(Event):
+class StartUpEvent(BaseEvent):
     type = EventType.STARTUP
 
 
-class ShutdownEvent(Event):
+class ShutdownEvent(BaseEvent):
     type = EventType.SHUTDOWN
 
 
-class HeartBeatEvent(Event):
+class HeartBeatEvent(BaseEvent):
     type = EventType.HEARTBEAT
 
     def __init__(self, hearbeat_count):
@@ -92,7 +37,7 @@ class HeartBeatEvent(Event):
         self.counter = hearbeat_count
 
 
-class DebugEvent(Event):
+class DebugEvent(BaseEvent):
     type = EventType.DEBUG
 
     def __init__(self, action):
@@ -100,7 +45,7 @@ class DebugEvent(Event):
         self.action = action
 
 
-class TimeFrameEvent(Event):
+class TimeFrameEvent(BaseEvent):
     type = EventType.TIMEFRAME
 
     def __init__(self, timeframe, current_time, previous, timezone, time):
@@ -112,7 +57,7 @@ class TimeFrameEvent(Event):
         self.time = time
 
 
-class MarketEvent(Event):
+class MarketEvent(BaseEvent):
     type = EventType.MARKET
 
     def __init__(self, action):
@@ -120,7 +65,7 @@ class MarketEvent(Event):
         self.action = action
 
 
-class TickPriceEvent(Event):
+class TickPriceEvent(BaseEvent):
     type = EventType.TICK_PRICE
 
     def __init__(self, broker, instrument, time, bid, ask):
@@ -138,7 +83,7 @@ class TickPriceEvent(Event):
         )
 
 
-class SignalEvent(Event):
+class SignalEvent(BaseEvent):
     type = EventType.SIGNAL
 
     def __init__(self, action, strategy_name, version, magic_number, instrument, side, price=None,
@@ -166,7 +111,7 @@ class SignalEvent(Event):
         )
 
 
-class OrderUpdateEvent(Event):
+class OrderUpdateEvent(BaseEvent):
     """order update signal"""
     type = EventType.ORDER_CLOSE
 
@@ -183,7 +128,7 @@ class OrderUpdateEvent(Event):
         super(OrderUpdateEvent, self).__init__()
 
 
-class OrderHoldingEvent(Event):
+class OrderHoldingEvent(BaseEvent):
     """order holding, to notify strategy to calculate close signal"""
     type = EventType.ORDER_HOLDING
 
@@ -193,7 +138,7 @@ class OrderHoldingEvent(Event):
         super(OrderHoldingEvent, self).__init__()
 
 
-class TradeCloseEvent(Event):
+class TradeCloseEvent(BaseEvent):
     type = EventType.ORDER_CLOSE
 
     def __init__(self, broker, account_id, trade_id, instrument, side, lots, profit, close_time, close_price, pips=None,
@@ -224,7 +169,7 @@ class TradeCloseEvent(Event):
         return text
 
 
-class TradeOpenEvent(Event):
+class TradeOpenEvent(BaseEvent):
     type = EventType.TRADE_OPEN
 
     def __init__(self, broker, account_id, trade_id, instrument, side, lots, open_time, open_price, stop_loss=None,
@@ -249,7 +194,7 @@ class TradeOpenEvent(Event):
         return text
 
 
-class OrderEvent(Event):
+class OrderEvent(BaseEvent):
     type = EventType.ORDER
 
     def __init__(self, instrument, units, order_type, side, expiry=None, price=None, lowerBound=None, upperBound=None,
@@ -274,72 +219,7 @@ class OrderEvent(Event):
         )
 
 
-class ConnectEvent(Event):
+class ConnectEvent(BaseEvent):
     def __init__(self, action):
         self.action = action.upper()
         super(ConnectEvent, self).__init__()
-
-
-class FillEvent(Event):
-    """
-    When an BaseExecutionHandler receives an OrderEvent it must transact the order. Once an order has been transacted it generates a FillEvent, which describes the cost of purchase or sale as well as the transaction costs, such as fees or slippage.
-    The FillEvent is the Event with the greatest complexity. It contains a timestamp for when an order was filled, the symbol of the order and the exchange it was executed on, the quantity of shares transacted, the actual price of the purchase and the commission incurred.
-
-    Encapsulates the notion of a Filled Order, as returned
-    from a brokerage. Stores the quantity of an instrument
-    actually filled and at what price. In addition, stores
-    the commission of the trade from the brokerage.
-    """
-
-    def __init__(self, timeindex, symbol, exchange, quantity,
-                 direction, fill_cost, commission=None):
-        """
-        Initialises the FillEvent object. Sets the symbol, exchange,
-        quantity, direction, cost of fill and an optional
-        commission.
-
-        If commission is not provided, the Fill object will
-        calculate it based on the trade size and Interactive
-        Brokers fees.
-
-        Parameters:
-        timeindex - The bar-resolution when the order was filled.
-        symbol - The instrument which was filled.
-        exchange - The exchange where the order was filled.
-        quantity - The filled quantity.
-        direction - The direction of fill ('BUY' or 'SELL')
-        fill_cost - The holdings value in dollars.
-        commission - An optional commission sent from IB.
-        """
-
-        self.type = 'FILL'
-        self.timeindex = timeindex
-        self.symbol = symbol
-        self.exchange = exchange
-        self.quantity = quantity
-        self.direction = direction
-        self.fill_cost = fill_cost
-
-        # Calculate commission
-        if commission is None:
-            self.commission = self.calculate_ib_commission()
-        else:
-            self.commission = commission
-
-    def calculate_ib_commission(self):
-        """
-        Calculates the fees of trading based on an Interactive
-        Brokers fee structure for API, in USD.
-
-        This does not include exchange or ECN fees.
-
-        Based on "US API Directed Orders":
-        https://www.interactivebrokers.com/en/index.php?f=commission&p=stocks2
-        """
-        full_cost = 1.3
-        if self.quantity <= 500:
-            full_cost = max(1.3, 0.013 * self.quantity)
-        else:  # Greater than 500
-            full_cost = max(1.3, 0.008 * self.quantity)
-        full_cost = min(full_cost, 0.5 / 100.0 * self.quantity * self.fill_cost)
-        return full_cost
