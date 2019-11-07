@@ -1,8 +1,10 @@
+import json
 import logging
 import sys
 import time
 import traceback
 
+from falcon.base.event import BaseEvent
 from falcon.event import HeartBeatEvent
 from .handler import BaseHandler
 
@@ -56,10 +58,23 @@ class BaseRunner(object):
             self.put_event(HeartBeatEvent(self.heartbeat_count))
 
     def yield_event(self, block=False):
-        raise NotImplementedError
+        try:
+            data = self.queue.get(block)
+            if data:
+                data = json.loads(data)
+                return BaseEvent.from_dict(data)
+            else:
+                return None
+        except Exception as ex:
+            logger.error('queue get error=%s' % ex)
+        return None
 
     def put_event(self, event):
-        raise NotImplementedError
+        try:
+            data = json.dumps(event.to_dict())
+            self.queue.put(data)
+        except Exception as ex:
+            logger.error('queue put error=%s' % ex)
 
     def handle_error(self, ex):
         pass
