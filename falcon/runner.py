@@ -3,6 +3,7 @@ import sys
 import time
 import traceback
 
+from falcon.event import HeartBeatEvent
 from .handler import BaseHandler
 
 logger = logging.getLogger(__name__)
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 class BaseRunner(object):
     loop_sleep = 1
     empty_sleep = 2
+    heartbeat = 5
 
     def __init__(self, queue_name, accounts, *args, **kwargs):
         self.handlers = []
@@ -19,6 +21,9 @@ class BaseRunner(object):
         self.accounts = accounts if type(accounts) is list else [accounts]
         self.queue_name = queue_name
         self.queue = self.create_queue(queue_name)
+        self.heartbeat_count = 0
+        self.last_heartbeat = time.time()
+        self.register(*args)
 
     def stop(self):
         del self.queue
@@ -45,7 +50,10 @@ class BaseRunner(object):
         pass
 
     def loop_end(self):
-        pass
+        # heartbeat event
+        if time.time() - self.last_heartbeat > self.heartbeat:
+            self.heartbeat_count += 1
+            self.put_event(HeartBeatEvent(self.heartbeat_count))
 
     def yield_event(self, block=False):
         raise NotImplementedError
