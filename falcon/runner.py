@@ -56,6 +56,7 @@ class BaseRunner(object):
         if time.time() - self.last_heartbeat > self.heartbeat:
             self.heartbeat_count += 1
             self.put_event(HeartBeatEvent(self.heartbeat_count))
+            self.last_heartbeat=time.time()
 
     def yield_event(self, block=False):
         try:
