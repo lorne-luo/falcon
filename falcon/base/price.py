@@ -16,7 +16,7 @@ def pip(symbol, price=None, _abs=False):
         raise Exception('%s not in PIP_DICT.' % symbol)
 
     pip_unit = PIP_DICT[symbol]
-    if price:
+    if price is not None:
         price = Decimal(str(price))
         if _abs:
             price = abs(price)
