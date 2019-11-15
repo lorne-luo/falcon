@@ -48,10 +48,10 @@ class DebugEvent(BaseEvent):
 class TimeFrameEvent(BaseEvent):
     type = EventType.TIMEFRAME
 
-    def __init__(self, timeframe, current, previous, timezone, time):
+    def __init__(self, timeframe, current_time, previous, timezone, time):
         super(TimeFrameEvent, self).__init__()
         self.timeframe = timeframe
-        self.current = current
+        self.current_time = current_time
         self.previous = previous
         self.timezone = timezone
         self.time = time
