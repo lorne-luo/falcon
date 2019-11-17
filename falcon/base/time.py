@@ -1,15 +1,15 @@
 import re
 import time
-from datetime import datetime
+import datetime
 
 from dateparser import parse
 
 
 def parse_timestamp(timestamp, utc=False):
     if utc:
-        return datetime.utcfromtimestamp(timestamp)
+        return datetime.datetime.utcfromtimestamp(timestamp)
     else:
-        return datetime.fromtimestamp(timestamp)
+        return datetime.datetime.fromtimestamp(timestamp)
 
 
 def datetime_to_timestamp(dt):
@@ -25,7 +25,7 @@ def datetime_to_str(dt, format='%Y-%m-%d %H:%M:%S:%f'):
 def str_to_datetime(string, format='%Y-%m-%d %H:%M:%S:%f'):
     if string:
         try:
-            dt = datetime.strptime(string, format)
+            dt = datetime.datetime.strptime(string, format)
         except:
             dt = parse(string)
 
@@ -34,7 +34,7 @@ def str_to_datetime(string, format='%Y-%m-%d %H:%M:%S:%f'):
 
 
 def timestamp_to_str(timestamp, datetime_fmt="%Y/%m/%d %H:%M:%S:%f"):
-    return datetime.fromtimestamp(timestamp).strftime(datetime_fmt)
+    return datetime.datetime.fromtimestamp(timestamp).strftime(datetime_fmt)
 
 
 def parse_date(value):
