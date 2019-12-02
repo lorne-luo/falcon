@@ -7,6 +7,14 @@ class OrderSide(object):
     BUY = 'BUY'
     SELL = 'SELL'
 
+    @staticmethod
+    def reverse(src):
+        if src == OrderSide.BUY:
+            return OrderSide.SELL
+        elif src == OrderSide.SELL:
+            return OrderSide.BUY
+
+
 class SignalAction(object):
     OPEN = 'OPEN'
     CLOSE = 'CLOSE'
